@@ -1,7 +1,4 @@
-# 🎯 AI-Based Face Recognition System
-### BSCS 7th Evening / C — Artificial Intelligence Domain
 
----
 
 ## 📁 Project Structure
 
@@ -136,6 +133,4 @@ python main.py
 - 🔲 Alert & Notification (email / SMS)
 - 🔲 Web Dashboard (Flask + HTML)
 
----
 
-*Project by BSCS 7th Evening / C | Domain: Artificial Intelligence*
