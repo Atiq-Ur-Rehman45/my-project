@@ -1,0 +1,12 @@
+# AI-Based Face & Weapon Recognition System
+# Face Recognition Module — Requirements
+# BSCS 7th Evening / C
+
+# Core
+opencv-python>=4.8.0          # Face detection via Haar Cascades + LBPH recognizer
+opencv-contrib-python>=4.8.0  # Required for cv2.face.LBPHFaceRecognizer_create()
+numpy>=1.24.0                  # Array operations
+
+# Optional but recommended
+Pillow>=9.0.0                  # Image handling utilities
+scikit-learn>=1.3.0            # For future ML extensions

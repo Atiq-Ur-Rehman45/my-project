@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+data/captured_faces/*
+data/criminal_db/*
+*.db
+*.xml
+logs/
