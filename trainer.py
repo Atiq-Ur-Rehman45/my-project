@@ -1,18 +1,16 @@
 """
 ==============================================================
   AI Face Recognition System — Training Manager
-  Loads images from disk and trains/retrains the LBPH model
+  HYBRID READY: Dynamically loads BGR for SFace, Grayscale for LBPH
 ==============================================================
 """
 
 import cv2
 import os
-import numpy as np
 import logging
-from config import CRIMINAL_DB_DIR, RECOGNITION_CONFIDENCE_THRESHOLD
+from config import RECOGNITION_ENGINE
 
 logger = logging.getLogger(__name__)
-
 
 class TrainingManager:
     """Handles loading training images and building/updating the recognition model."""
@@ -24,17 +22,7 @@ class TrainingManager:
     def load_training_data_from_disk(self):
         """
         Walk through criminal_db directory and load all saved face images.
-        
-        Expects structure:
-            criminal_db/
-                person_1_John_Doe/
-                    face_0001.jpg
-                    face_0002.jpg
-                    ...
-        
-        Each criminal's face_label is queried from DB by matching the directory.
-        
-        Returns list of (face_ndarray, int_label) tuples.
+        Formats the images dynamically based on the active RECOGNITION_ENGINE.
         """
         criminals = self.db.list_all_criminals()
         training_data = []
@@ -53,12 +41,24 @@ class TrainingManager:
             for fname in sorted(os.listdir(img_dir)):
                 if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
                     continue
+                
                 img_path = os.path.join(img_dir, fname)
-                img      = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                if img is None:
-                    continue
-                # Resize to standard size if needed
-                img = cv2.resize(img, (100, 100))
+                
+                # ── HYBRID IMAGE LOADING LOGIC ─────────────────────────────
+                if RECOGNITION_ENGINE == "SFACE":
+                    # Deep Learning needs full 3-channel BGR color and high resolution
+                    img = cv2.imread(img_path)
+                    if img is None:
+                        continue
+                    # Do not resize. SFace needs original quality for landmarking.
+                else:
+                    # Legacy LBPH needs 1-channel grayscale crushed to 100x100
+                    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                    if img is None:
+                        continue
+                    img = cv2.resize(img, (100, 100))
+                # ───────────────────────────────────────────────────────────
+                
                 training_data.append((img, label))
                 count += 1
 
@@ -73,7 +73,7 @@ class TrainingManager:
         Load all enrolled face images and completely retrain the model.
         Use after enrolling new criminals or deleting records.
         """
-        print("\n[TRAINER] Starting full retrain...")
+        print(f"\n[TRAINER] Starting full retrain for {RECOGNITION_ENGINE} mode...")
         data = self.load_training_data_from_disk()
 
         if not data:

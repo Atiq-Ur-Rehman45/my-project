@@ -32,9 +32,8 @@ from config import ENROLL_FRAME_COUNT, CAMERA_INDEX
 # ── Banner ────────────────────────────────────────────────────────────────────
 BANNER = r"""
 ╔══════════════════════════════════════════════════════════════╗
-║      AI-BASED FACE & WEAPON RECOGNITION SYSTEM              ║
+║      AI-BASED FACE & WEAPON RECOGNITION SYSTEM               ║
 ║      Module: Face Recognition                                ║
-║      BSCS 8th Evening / C  —  AI Domain                     ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 

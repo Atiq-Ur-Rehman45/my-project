@@ -1,11 +1,3 @@
-"""
-==============================================================
-  AI Face Recognition System — Database Manager
-  Module: Criminal Database
-  Author: BSCS-7th Evening Project
-==============================================================
-"""
-
 import sqlite3
 import os
 import json

@@ -5,3 +5,5 @@ data/criminal_db/*
 *.db
 *.xml
 logs/
+*.onnx
+*.pkl

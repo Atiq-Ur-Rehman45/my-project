@@ -100,7 +100,7 @@ class LiveMonitor:
             else:
                 self._draw_paused_overlay(frame)
 
-            cv2.imshow("AI Face Recognition System — BSCS Project", frame)
+            cv2.imshow("AI Face Recognition System", frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key in (ord('q'), ord('Q'), 27):   # Q or ESC
