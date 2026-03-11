@@ -1,9 +1,33 @@
+# Model files (large, auto-downloaded)
+models/*.onnx
+models/*.pkl
+models/*.xml
+
+# Database files (user-specific)
+*.db
+*.db-journal
+data/criminal_records.db
+
+# Captured data (personal)
+data/criminal_db/*
+data/captured_faces/*
+data/training_data/*
+
+# Python cache
 __pycache__/
 *.pyc
-data/captured_faces/*
-data/criminal_db/*
-*.db
-*.xml
-logs/
-*.onnx
-*.pkl
+*.pyo
+
+# Logs
+logs/*.log
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Keep folder structure
+!models/.gitkeep
+!data/criminal_db/.gitkeep
+!data/captured_faces/.gitkeep
+!logs/.gitkeep
