@@ -156,12 +156,12 @@ def create_app():
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("\n" + "═" * 62)
+    print("\n" + "=" * 62)
     print("  AI FACE & WEAPON RECOGNITION SYSTEM — Web Dashboard")
-    print("═" * 62)
+    print("=" * 62)
     print(f"  Starting server at http://{WEB_HOST}:{WEB_PORT}")
     print(f"  Open your browser and navigate to: http://localhost:{WEB_PORT}")
-    print("═" * 62 + "\n")
+    print("=" * 62 + "\n")
 
     app, socketio = create_app()
     socketio.run(

@@ -1,153 +1,88 @@
+# 🛡️ AI-Based Face & Weapon Recognition System
 
+![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![Flask](https://img.shields.io/badge/Flask-2.3-green.svg)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.8-orange.svg)
+![Deep Learning](https://img.shields.io/badge/Deep%20Learning-YuNet_%2F_SFace-red.svg)
+
+A professional-grade surveillance and security dashboard featuring state-of-the-art **YuNet** face detection and **SFace** deep learning recognition. Optimized for high-accuracy tracking at distance and real-time weapon detection.
+
+---
+
+## 🚀 Key Features
+
+*   **Elite Accuracy Bundle**:
+    *   **Automatic Outlier Filter**: PRunes poor-quality enrollment samples using pairwise cosine distance.
+    *   **Top-K Mean Scoring**: Average of the top 3 similarity matches per person to prevent "one-off" false positives.
+    *   **Weighted Temporal Consensus**: Exponential decay voting (`0.9^n`) for stable, flicker-free identity acquisition.
+    *   **Adaptive Small-Face Sharpening**: Automatic Unsharp Mask (USM) filter with hysteresis for accurate recognition of distant subjects.
+*   **Dual-Layer Security**:
+    *   **Real-time Recognition**: Instant lookup against a local criminal/VIP database.
+    *   **Weapon Detection**: Async YOLOv8 processing to detect firearms without impacting video FPS.
+*   **Professional Dashboard**:
+    *   High-performance MJPEG streaming with WebSocket HUD overlays.
+    *   Automated incident logging and snapshot capture.
+    *   Responsive web interface for system management and enrollment.
+
+---
+
+## 🏗️ Technical Architecture
+
+| Layer | Component | Details |
+| :--- | :--- | :--- |
+| **Detection** | **YuNet** | CNN-based detector optimized for speed and occluded faces. |
+| **Recognition** | **SFace** | Deep Learning 128D embeddings with sub-pixel alignment precision. |
+| **Analysis** | **YOLOv8** | ONNX-accelerated object detection for weapon identification. |
+| **Database** | **SQLite3** | Secure local storage for criminal records and event logs. |
+| **UI** | **Flask + SocketIO** | Real-time dashboard with ultra-low latency alerts. |
+
+---
 
 ## 📁 Project Structure
 
-```
+```bash
 face_recognition_system/
-│
-├── main.py               ← Entry point (run this!)
-├── config.py             ← All settings (camera index, thresholds, paths)
-├── database.py           ← SQLite criminal database manager
-├── face_engine.py        ← Detection (Haar Cascade) + Recognition (LBPH)
-├── trainer.py            ← Model training from enrolled images
-├── monitor.py            ← Live webcam feed with HUD overlay
-├── weapon_engine.py      ← Async weapon detector worker (ONNX)
-├── requirements.txt      ← Python dependencies
-│
-├── data/
-│   ├── criminal_db/      ← Face images per enrolled person
-│   ├── captured_faces/   ← Snapshots taken during detection
-│   └── criminal_records.db  ← SQLite database
-│
-├── models/
-│   ├── lbph_face_model.xml  ← Trained recognition model (auto-generated)
-│   └── weapon_yolov8n.onnx  ← Weapon detector model (add manually)
-│
-└── logs/
-    └── system.log        ← Runtime logs
+├── web_app.py            # Main Entry Point (Launch Dashboard)
+├── config.py             # Global Configuration (Thresholds, Paths, UI)
+├── face_engine.py        # Core YuNet + SFace Engine
+├── database.py           # Identity & Log Management (SQLite)
+├── trainer.py            # Embedding Generation & Augmentation
+├── legacy/               # Archived terminal-based interfaces
+├── data/                 # Local records (Snapshots, Databases)
+└── models/               # Pre-trained ONNX Model files
 ```
 
 ---
 
-## ⚙️ Installation
+## ⚙️ Installation & Setup
 
-### Step 1 — Install Python dependencies
-
+### 1. Requirements
+Ensure you have Python 3.11+ installed.
 ```bash
-pip install opencv-python opencv-contrib-python numpy onnxruntime onnx
+pip install -r requirements.txt
 ```
 
-> ⚠️ You **must** install `opencv-contrib-python` for the LBPH face recognizer.
-> If you have `opencv-python` already installed, uninstall it first:
-> ```bash
-> pip uninstall opencv-python
-> pip install opencv-contrib-python
-> ```
-
-### Step 2 — Verify installation
-
+### 2. Launching the Dashboard
+The system is fully web-native. To start the dashbaord:
 ```bash
-python -c "import cv2; r = cv2.face.LBPHFaceRecognizer_create(); print('OK')"
+python web_app.py
 ```
+Then open: **[http://localhost:5000](http://localhost:5000)**
+
+### 3. Enrollment Workflow
+1.  Navigate to **Enroll New Person**.
+2.  The system will guide you through a **Pose Challenge** (Front, Left, Right, Up, Down).
+3.  Ensure "Training" is triggered to generate the optimized embedding matrix.
 
 ---
 
-## 🚀 How to Run
+## 🎯 Elite Optimization Details
 
-```bash
-python main.py
-```
+This project utilizes advanced computer vision techniques to push SFace to its theoretical limit:
+- **Hysteresis Smoothing**: Prevents "blinking" labels when subjects are at the edge of the detection range.
+- **Motion-Aware Hold**: Identity persistence increases when subjects are moving/walking to survive motion blur.
+- **LAB-Space CLAHE**: Lighting normalization is performed in the Lab color space to maintain color integrity while maximizing contrast.
 
----
 
-## 📋 Workflow (Follow in order!)
-
-### 1. Enroll a Criminal
-- Select **Option 1** from the menu
-- Fill in name, CNIC, crime type, status
-- Webcam opens — look at the camera
-- **60 face images** are captured automatically
-- Vary your head angle slightly for better accuracy
-
-### 2. Train the Model
-- Select **Option 2**
-- Wait a few seconds for training to complete
-- Model saved to `models/lbph_face_model.xml`
-
-### 3. Run Live Recognition
-- Select **Option 3**
-- Webcam opens with real-time detection
-- **Red box** = Known criminal detected → Alert triggered!
-- **Green box** = Unknown person
-- **Weapon box** = Weapon candidate from async ONNX worker (independent alert policy)
-
-### 3.5 Test Video File (Weapon Detection Demo)
-- Select **Option 3.5**
-- Enter path to a local MP4 or AVI file
-- Plays video with face + weapon detection overlay
-- **No camera needed** — perfect for testing with downloaded YouTube clips
-- Same detection logic as live feed; ideal for safe testing without real weapons
-
-### Controls (during live feed)
-| Key | Action |
-|-----|--------|
-| `Q` or `ESC` | Quit |
-| `S` | Save snapshot |
-| `P` | Pause / Resume |
-
----
-
-## 🔧 Configuration (config.py)
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `CAMERA_INDEX` | `0` | Webcam index (try `1` if default doesn't work) |
-| `ENROLL_FRAME_COUNT` | `60` | Number of face samples to capture per person |
-| `RECOGNITION_CONFIDENCE_THRESHOLD` | `70` | Lower = stricter matching |
-| `ALERT_COOLDOWN_SECONDS` | `30` | Min gap between repeated alerts |
-
----
-
-## 🧠 Technical Details
-
-| Component | Technology |
-|-----------|-----------|
-| Face Detection | OpenCV Haar Cascade (`haarcascade_frontalface_default.xml`) |
-| Face Recognition | LBPH — Local Binary Pattern Histogram |
-| Database | SQLite via `sqlite3` (no server needed) |
-| Image Processing | CLAHE normalization + resize to 100×100 |
-| Alert System | Terminal output + Database log + Snapshot |
-
-### Why LBPH?
-- Works **without deep learning** (no GPU needed)
-- Handles lighting variation well (with CLAHE)
-- Can be **incrementally updated** without full retrain
-- Gives an interpretable **confidence score**
-
----
-
-## 🛠️ Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| `cv2.face` not found | Install `opencv-contrib-python` (not just `opencv-python`) |
-| Camera not opening | Change `CAMERA_INDEX` in `config.py` (try 0, 1, 2) |
-| Poor recognition | Enroll more images in better lighting; lower threshold |
-| False positives | Increase `RECOGNITION_CONFIDENCE_THRESHOLD` (e.g. 55) |
-
----
-
-## 📌 Module Status
-- ✅ Face Recognition (active)
-- ✅ Weapon Detection (YOLOv8 ONNX async worker)
-- 🔲 Alert & Notification (email / SMS)
-- 🔲 Web Dashboard (Flask + HTML)
-
-## 🎥 Safe Weapon Testing Without Real Weapons
-1. Download local MP4 clips from YouTube showing weapon-like motion scenarios.
-2. Place clips in a local test folder and run Option 3 against webcam or video runner (next step module).
-3. Validate detections under motion blur, low light, and multiple people.
-4. Include no-weapon clips to tune thresholds and reduce false positives.
-5. Use toy/printed objects for desk testing only; avoid real weapons.
 
 

@@ -13,13 +13,6 @@ LOGS_DIR         = os.path.join(BASE_DIR, "logs")
 DB_PATH          = os.path.join(DATA_DIR, "criminal_records.db")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 🔥 ENGINE SELECTION — CHANGE THIS TO SWITCH MODES
-# ══════════════════════════════════════════════════════════════════════════════
-RECOGNITION_ENGINE = "SFACE"     # Options: "SFACE" or "LBPH"
-                                 # SFACE = Modern (95%+ accuracy)
-                                 # LBPH  = Classic (75-85% accuracy)
-
-# ══════════════════════════════════════════════════════════════════════════════
 # SFACE (Deep Learning) Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -51,8 +44,8 @@ elif SFACE_OPERATING_PROFILE == "RECALL_FIRST":
     SFACE_MARGIN_THRESHOLD_MAINTAIN = 0.03
     SFACE_CONSENSUS_FRAMES = 2
 else:
-    SFACE_MATCH_THRESHOLD_ACQUIRE = 0.53 # Balanced default after field tuning
-    SFACE_MATCH_THRESHOLD_MAINTAIN = 0.50
+    SFACE_MATCH_THRESHOLD_ACQUIRE = 0.50 # Tuned: relaxed for distance; margin gate + consensus prevent false positives
+    SFACE_MATCH_THRESHOLD_MAINTAIN = 0.47
     SFACE_MARGIN_THRESHOLD_ACQUIRE = 0.045
     SFACE_MARGIN_THRESHOLD_MAINTAIN = 0.03
     SFACE_CONSENSUS_FRAMES = 2
@@ -60,48 +53,27 @@ else:
 SFACE_MATCH_THRESHOLD = SFACE_MATCH_THRESHOLD_ACQUIRE  # Compatibility alias
 SFACE_MARGIN_THRESHOLD = SFACE_MARGIN_THRESHOLD_ACQUIRE
 SFACE_CONSENSUS_WINDOW = 6              # Track this many recent frames per face track
-SFACE_KNOWN_HOLD_FRAMES = 4             # Keep confirmed identity for N brief unstable frames
-SFACE_RECOG_MIN_FACE_AREA_RATIO = 0.035 # Reject tiny faces during recognition
-SFACE_RECOG_BLUR_THRESHOLD = 70.0       # Reject blurry face ROI during recognition
+SFACE_KNOWN_HOLD_FRAMES = 12            # Keep confirmed identity for N frames (~1s) during blur/motion
+SFACE_RECOG_MIN_FACE_AREA_RATIO = 0.015 # Tuned: allows recognition up to ~2.5m (was 0.035 = ~1m limit)
+SFACE_RECOG_BLUR_THRESHOLD = 40.0       # Strict threshold for initial identification
+SFACE_RECOG_BLUR_THRESHOLD_MAINTAIN = 20.0 # Lenient threshold for walking/moving subjects
 
 # Multi-face stabilization cache
 SFACE_CACHE_REUSE_FRAMES = 2        # Reuse last recognition for up to N frames if same face box persists
 SFACE_CACHE_TTL_SECONDS = 0.7       # Drop stale cached tracks quickly to avoid ghost identities
 SFACE_CACHE_IOU_THRESHOLD = 0.65    # Strict overlap needed to reuse a cached identity
 SFACE_CACHE_MAX_TRACKS = 64         # Hard cap to keep cache operations bounded
+SFACE_SKIP_RECOGNITION_FRAMES = 2   # Skip expensive DNN inference for cached tracks within N frames (FPS boost)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# LBPH (Classic) Configuration
-# ══════════════════════════════════════════════════════════════════════════════
+# ── Tier 2 Accuracy Bundle (Advanced Software Optimization) ──────────────────
+SFACE_OUTLIER_THRESHOLD    = 0.40  # Max avg cosine distance between enrollment embeddings
+SFACE_OUTLIER_MIN_SAMPLES  = 10    # Never prune a person below this many samples
+SFACE_SHARPEN_MIN_SIZE     = 80    # Apply USM if width/height is below this (px)
+ENABLE_USM_DEBUG           = True  # Draw indicator when sharpening is active
 
-# ── Model Paths ───────────────────────────────────────────────────────────────
-LBPH_MODEL_PATH  = os.path.join(MODELS_DIR, "lbph_face_model.xml")
-
-# ── Cascade Classifier Paths ──────────────────────────────────────────────────
-import cv2
-FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-FACE_PROFILE_CASCADE = cv2.data.haarcascades + "haarcascade_profileface.xml"
-EYE_CASCADE_PATH  = cv2.data.haarcascades + "haarcascade_eye.xml"
-
-# ── LBPH Detection Parameters (Live Monitoring) ───────────────────────────────
-DETECTION_SCALE_FACTOR   = 1.05     # Lower = more sensitive (1.05-1.3)
-DETECTION_MIN_NEIGHBORS  = 3        # Lower = more detections (3-7)
-DETECTION_MIN_SIZE       = (50, 50) # Minimum face size in pixels
-
-# Enrollment Detection (Stricter for quality)
-ENROLL_SCALE_FACTOR   = 1.15
-ENROLL_MIN_NEIGHBORS  = 7
-ENROLL_MIN_SIZE       = (80, 80)
-
-# ── LBPH Recognition Parameters ───────────────────────────────────────────────
-RECOGNITION_CONFIDENCE_THRESHOLD = 100   # LBPH distance threshold
-                                          # Lower = stricter (50-70)
-                                          # Higher = more lenient (80-120)
-                                          # Recommended: 100
-
-# Recognition Stability
-RECOGNITION_SMOOTHING_FRAMES = 5    # Average over last N frames
-RECOGNITION_CONFIDENCE_ALPHA = 0.3  # Smoothing factor (0.0-1.0)
+# ── Elite-Level Accuracy Refinements ─────────────────────────────────────────
+SFACE_TOP_K_MATCH          = 3     # Average the top-N matches per person for robustness
+SFACE_MATCH_FLOOR          = 0.35  # Hard floor for identification (ignore lower scores)
 
 # ── Common Settings ───────────────────────────────────────────────────────────
 UNKNOWN_LABEL = "Unknown"
@@ -123,11 +95,7 @@ WARMUP_FRAMES         = 10          # Discard first N frames (camera settling)
 ASYNC_CAMERA_CAPTURE  = True        # Read camera frames on a background thread
 
 # ── Enrollment Settings ───────────────────────────────────────────────────────
-# CRITICAL: SFace needs fewer images than LBPH!
-if RECOGNITION_ENGINE == "SFACE":
-    ENROLL_FRAME_COUNT = 20         # SFace: 20 images improves identity separation
-else:
-    ENROLL_FRAME_COUNT = 30         # LBPH: needs 30 for good accuracy
+ENROLL_FRAME_COUNT = 20         # SFace: 20 images improves identity separation
 
 ENROLL_CAPTURE_DELAY  = 0.4         # Seconds between auto-captures
 ENROLL_COUNTDOWN      = 3           # Countdown before enrollment starts
@@ -152,24 +120,14 @@ if ENROLL_SECURITY_PROFILE == "BALANCED":
     ENROLL_FACE_MIN_AREA_RATIO = 0.035
 
 # ── Multi-Angle Enrollment Strategy ───────────────────────────────────────────
-if RECOGNITION_ENGINE == "SFACE":
-    # SFace: Balanced quality and diversity for stronger embeddings
-    ENROLLMENT_STRATEGY = [
-        {"angle": "FRONT", "count": 8, "instruction": "Look STRAIGHT at camera"},
-        {"angle": "LEFT",  "count": 4, "instruction": "Turn head to the LEFT"},
-        {"angle": "RIGHT", "count": 4, "instruction": "Turn head to the RIGHT"},
-        {"angle": "UP",    "count": 2, "instruction": "Tilt head UP slightly"},
-        {"angle": "DOWN",  "count": 2, "instruction": "Tilt head DOWN slightly"},
-    ]
-else:
-    # LBPH: More images for better training
-    ENROLLMENT_STRATEGY = [
-        {"angle": "FRONT", "count": 10, "instruction": "Look STRAIGHT at camera - HOLD STILL"},
-        {"angle": "LEFT",  "count": 6,  "instruction": "Turn head to the LEFT - HOLD"},
-        {"angle": "RIGHT", "count": 6,  "instruction": "Turn head to the RIGHT - HOLD"},
-        {"angle": "UP",    "count": 4,  "instruction": "Tilt head UP slightly - HOLD"},
-        {"angle": "DOWN",  "count": 4,  "instruction": "Tilt head DOWN slightly - HOLD"},
-    ]
+# SFace: Balanced quality and diversity for stronger embeddings
+ENROLLMENT_STRATEGY = [
+    {"angle": "FRONT", "count": 8, "instruction": "Look STRAIGHT at camera"},
+    {"angle": "LEFT",  "count": 4, "instruction": "Turn head to the LEFT"},
+    {"angle": "RIGHT", "count": 4, "instruction": "Turn head to the RIGHT"},
+    {"angle": "UP",    "count": 2, "instruction": "Tilt head UP slightly"},
+    {"angle": "DOWN",  "count": 2, "instruction": "Tilt head DOWN slightly"},
+]
 
 # ── Image Quality Settings ────────────────────────────────────────────────────
 ENABLE_BLUR_DETECTION = True        # Reject blurry frames during enrollment
@@ -249,9 +207,6 @@ ALLOWED_VIDEO_EXT = {".mp4", ".avi", ".mov", ".mkv"}
 
 def download_models_if_needed():
     """Auto-download YuNet and SFace models if not present."""
-    if RECOGNITION_ENGINE != "SFACE":
-        return True
-    
     import urllib.request
     models_to_download = []
     
@@ -309,14 +264,13 @@ except Exception as e:
 for _dir in [DATA_DIR, CRIMINAL_DB_DIR, CAPTURED_DIR, TRAINING_DIR, MODELS_DIR, LOGS_DIR]:
     os.makedirs(_dir, exist_ok=True)
 
-# Auto-download models if using SFace
-if RECOGNITION_ENGINE == "SFACE":
-    _models_ready = download_models_if_needed()
+# Auto-download models
+_models_ready = download_models_if_needed()
 
-print("\n" + "═" * 60)
+print("\n" + "=" * 60)
 print("  AI FACE RECOGNITION SYSTEM — Configuration Loaded")
-print("═" * 60)
-print(f"  Engine Mode        : {RECOGNITION_ENGINE}")
+print("=" * 60)
+print(f"  Engine Mode        : SFACE")
 print(f"  Camera Resolution  : {FRAME_WIDTH}×{FRAME_HEIGHT}")
 print(f"  Enrollment Images  : {ENROLL_FRAME_COUNT} per person")
-print("═" * 60 + "\n")
+print("=" * 60 + "\n")

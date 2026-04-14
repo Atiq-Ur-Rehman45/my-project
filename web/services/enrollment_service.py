@@ -22,7 +22,7 @@ from config import (
     ENROLL_LIVENESS_CHALLENGE_ENABLED, ENROLL_MIN_STABLE_FRAMES,
     ENABLE_BLUR_DETECTION, BLUR_THRESHOLD,
     COLOR_GREEN, COLOR_YELLOW, COLOR_WHITE, COLOR_ORANGE,
-    COLOR_RED, COLOR_BLACK, RECOGNITION_ENGINE,
+    COLOR_RED, COLOR_BLACK,
 )
 
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ class EnrollmentService:
             instruction    = stage["instruction"]
             stage_elapsed  = now - stage_start_time
             pose_relaxed   = stage_elapsed >= ENROLL_POSE_RELAX_AFTER_SECONDS
-            liveness_ok    = (not ENROLL_LIVENESS_CHALLENGE_ENABLED) or RECOGNITION_ENGINE != "SFACE"
+            liveness_ok    = (not ENROLL_LIVENESS_CHALLENGE_ENABLED)
 
             # Non-blocking inter-stage pause
             if now < pause_until:
@@ -175,59 +175,52 @@ class EnrollmentService:
             x = y = w = h = 0
             yaw_val = pitch_val = None
 
-            if RECOGNITION_ENGINE == "SFACE":
-                self.engine._set_sface_input_size((FRAME_WIDTH, FRAME_HEIGHT))
-                _, faces = self.engine.detector.detect(frame)
-                face_detected = faces is not None and len(faces) > 0
-                if face_detected:
-                    best = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
-                    x, y, w, h = best[0:4].astype(int)
-                    face_area   = (w * h) / float(FRAME_WIDTH * FRAME_HEIGHT)
-                    roi         = frame[max(0,y):y+h, max(0,x):x+w]
-                    if len(faces) > 1:
-                        quality_message = "ONE FACE ONLY"
-                    elif face_area < ENROLL_FACE_MIN_AREA_RATIO:
-                        quality_message = "MOVE CLOSER"
-                    elif roi.size == 0:
-                        quality_message = "FACE OUT OF FRAME"
-                    else:
-                        if ENABLE_BLUR_DETECTION:
-                            gray_roi   = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                            blur_score = self.engine.estimate_blur(gray_roi)
-                            if blur_score < BLUR_THRESHOLD:
-                                quality_message = "HOLD STILL (BLURRY)"
-                            else:
-                                quality_ok = True
+            self.engine._set_sface_input_size((FRAME_WIDTH, FRAME_HEIGHT))
+            _, faces = self.engine.detector.detect(frame)
+            face_detected = faces is not None and len(faces) > 0
+            if face_detected:
+                best = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+                x, y, w, h = best[0:4].astype(int)
+                face_area   = (w * h) / float(FRAME_WIDTH * FRAME_HEIGHT)
+                roi         = frame[max(0,y):y+h, max(0,x):x+w]
+                if len(faces) > 1:
+                    quality_message = "ONE FACE ONLY"
+                elif face_area < ENROLL_FACE_MIN_AREA_RATIO:
+                    quality_message = "MOVE CLOSER"
+                elif roi.size == 0:
+                    quality_message = "FACE OUT OF FRAME"
+                else:
+                    if ENABLE_BLUR_DETECTION:
+                        gray_roi   = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                        blur_score = self.engine.estimate_blur(gray_roi)
+                        if blur_score < BLUR_THRESHOLD:
+                            quality_message = "HOLD STILL (BLURRY)"
                         else:
                             quality_ok = True
+                    else:
+                        quality_ok = True
 
-                    if quality_ok:
-                        yaw_val, pitch_val = self.engine._sface_pose_signature(best)
-                        pose_ok = self.engine._pose_matches_stage(
-                            current_angle, yaw_val, pitch_val, relaxed=pose_relaxed
-                        )
-                        if not pose_ok:
-                            quality_message = f"ADJUST: {current_angle}"
+                if quality_ok:
+                    yaw_val, pitch_val = self.engine._sface_pose_signature(best)
+                    pose_ok = self.engine._pose_matches_stage(
+                        current_angle, yaw_val, pitch_val, relaxed=pose_relaxed
+                    )
+                    if not pose_ok:
+                        quality_message = f"ADJUST: {current_angle}"
 
-                        if quality_ok and pose_ok and ENROLL_LIVENESS_CHALLENGE_ENABLED:
-                            if current_angle.upper() == "FRONT":
-                                liveness_ok = True
-                            else:
-                                liveness_ok = self.engine._liveness_pose_delta_ok(
-                                    current_angle, yaw_val, pitch_val, front_pose_baseline
-                                )
-                                if not liveness_ok:
-                                    quality_message = "LIVENESS: MOVE HEAD AS PROMPTED"
-                        elif quality_ok and pose_ok:
+                    if quality_ok and pose_ok and ENROLL_LIVENESS_CHALLENGE_ENABLED:
+                        if current_angle.upper() == "FRONT":
                             liveness_ok = True
+                        else:
+                            liveness_ok = self.engine._liveness_pose_delta_ok(
+                                current_angle, yaw_val, pitch_val, front_pose_baseline
+                            )
+                            if not liveness_ok:
+                                quality_message = "LIVENESS: MOVE HEAD AS PROMPTED"
+                    elif quality_ok and pose_ok:
+                        liveness_ok = True
             else:
-                gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                gray  = cv2.equalizeHist(gray)
-                faces = self.engine._detect_single_best_face_lbph(gray)
-                face_detected = len(faces) > 0
-                if face_detected:
-                    x, y, w, h = faces[0]
-                    quality_ok = pose_ok = liveness_ok = True
+                quality_message = "NO FACE DETECTED"
 
             if quality_ok and pose_ok and liveness_ok:
                 stage_stable_frames += 1
@@ -246,21 +239,21 @@ class EnrollmentService:
                 total_collected += 1
                 last_capture     = now
 
-                if RECOGNITION_ENGINE == "SFACE" and current_angle.upper() == "FRONT" and yaw_val:
+                if current_angle.upper() == "FRONT" and yaw_val:
                     if front_pose_baseline is None:
                         front_pose_baseline = {"yaw": yaw_val, "pitch": pitch_val}
                     else:
                         front_pose_baseline["yaw"]   = (front_pose_baseline["yaw"]   + yaw_val)   * 0.5
                         front_pose_baseline["pitch"] = (front_pose_baseline["pitch"] + pitch_val) * 0.5
 
-                # Save image to disk
+                # Save image to disk (Fix 5: Lossless PNG)
                 if self.save_dir:
-                    img_path = f"{self.save_dir}/{current_angle}_{angle_count:02d}.jpg"
+                    img_path = f"{self.save_dir}/{current_angle}_{angle_count:02d}.png"
                     cv2.imwrite(img_path, frame)
                     if ENROLL_SAVE_FACE_CROPS and w > 0:
                         crop = frame[max(0,y):y+h, max(0,x):x+w]
                         if crop.size > 0:
-                            cv2.imwrite(f"{self.save_dir}/{current_angle}_{angle_count:02d}_crop.jpg", crop)
+                            cv2.imwrite(f"{self.save_dir}/{current_angle}_{angle_count:02d}_crop.png", crop)
 
                 # Emit progress via WebSocket
                 self.socketio.emit("enrollment:progress", {

@@ -19,11 +19,11 @@ from config import (
     ALERT_COOLDOWN_SECONDS, SNAPSHOT_ON_DETECTION, CAPTURED_DIR,
     ENABLE_WEAPON_DETECTION, WEAPON_ALERT_COOLDOWN_SECONDS,
     WEAPON_ALERT_ON_UNKNOWN, WEAPON_SNAPSHOT_ON_DETECTION,
-    RECOGNITION_ENGINE, SFACE_MATCH_THRESHOLD, RECOGNITION_CONFIDENCE_THRESHOLD,
+    SFACE_MATCH_THRESHOLD,
     COLOR_GREEN, COLOR_RED, COLOR_YELLOW, COLOR_WHITE, COLOR_ORANGE,
     COLOR_BLACK, UNKNOWN_LABEL,
     CAMERA_FPS_TARGET, CAMERA_AUTOFOCUS, CAMERA_BUFFER_SIZE,
-    UPLOAD_DIR,
+    UPLOAD_DIR, ENABLE_USM_DEBUG
 )
 from monitor import LatestFrameCamera, DirectCamera, VideoFileCamera
 
@@ -340,15 +340,16 @@ class VideoPipeline:
 
             # Label
             if is_known:
-                if RECOGNITION_ENGINE == "SFACE":
-                    pct = min(100.0, confidence * 100)
-                else:
-                    pct = max(0.0, (1.0 - confidence / RECOGNITION_CONFIDENCE_THRESHOLD) * 100)
+                pct = self.engine.remap_confidence(confidence) * 100
+                pct = max(0.0, min(100.0, pct))
                 label = f"{name}  [{pct:.0f}%]"
                 criminal = r.get("criminal") or {}
                 crime = criminal.get("crime_type", "")
                 if crime:
                     label += f"  {crime}"
+                
+                if ENABLE_USM_DEBUG and r.get("was_sharpened"):
+                    label = "[SHARP] " + label
             else:
                 label = "Unknown"
 
@@ -370,7 +371,7 @@ class VideoPipeline:
         wcolor = COLOR_RED if wc > 0 else COLOR_WHITE
         cv2.putText(frame, f"Weapons:{wc}",
                     (170, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.42, wcolor, 1)
-        cv2.putText(frame, RECOGNITION_ENGINE,
+        cv2.putText(frame, "SFACE",
                     (270, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR_YELLOW, 1)
         ts = datetime.now().strftime("%H:%M:%S")
         (tw, _), _ = cv2.getTextSize(ts, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
@@ -402,11 +403,9 @@ class VideoPipeline:
             camera_id=self.stats.get("source", "webcam_0"),
         )
 
-        # Compute display confidence %
-        if RECOGNITION_ENGINE == "SFACE":
-            pct = round(min(result["confidence"] * 100, 100), 1)
-        else:
-            pct = round(max(0, (1 - result["confidence"] / RECOGNITION_CONFIDENCE_THRESHOLD) * 100), 1)
+        # Compute display confidence % (Fix 4)
+        pct = self.engine.remap_confidence(result["confidence"]) * 100
+        pct = round(max(0.0, min(100.0, pct)), 1)
 
         snap_url = None
         if snapshot_path:
@@ -422,7 +421,7 @@ class VideoPipeline:
             "timestamp":    datetime.now().strftime("%H:%M:%S"),
             "snapshot_url": snap_url,
         })
-        logger.warning(f"[PIPELINE] ⚠ Criminal detected: {result['name']} ({pct}%)")
+        logger.warning(f"[PIPELINE] [!] Criminal detected: {result['name']} ({pct}%)")
 
     def _handle_weapon_alert(self, detections, frame):
         now = time.time()
@@ -468,7 +467,7 @@ class VideoPipeline:
             "timestamp":    datetime.now().strftime("%H:%M:%S"),
             "snapshot_url": snap_url,
         })
-        logger.warning(f"[PIPELINE] ⚠ Weapon detected: {types} ({max_conf:.2f})")
+        logger.warning(f"[PIPELINE] [!] Weapon detected: {types} ({max_conf:.2f})")
 
     # ── Offline placeholder ───────────────────────────────────────────────────
 

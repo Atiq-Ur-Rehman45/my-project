@@ -1,37 +1,42 @@
-# Python environment
-venv/
-env/
+# ── PYTHON ──────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*$py.class
+venv/
+env/
+.env
 
-# Models (Optional: Comment out if you want to push models to GitHub)
+# ── LOGS ────────────────────────────────────────────────────────────────────
+logs/*.log
+*.log
+
+# ── MODELS & BINARIES ───────────────────────────────────────────────────────
+# We ignore the heavy models and generated databases
 models/*.onnx
 models/*.pkl
 models/*.xml
 
-# Runtime Data (NEVER push database or user photos)
-data/*.json
-data/*.pkl
+# ── RUNTIME DATA (SENSITIVE) ───────────────────────────────────────────────
+# We ignore ALL person photos and surveillance snapshots for privacy
+data/criminal_db/**/*
+data/captured_faces/**/*
+data/training_data/**/*
+data/uploads/**/*
+data/uploaded_videos/**/*
 data/*.db
 data/*.db-journal
+data/*.pkl
 
-# Directories to ignore contents but keep the folder
-data/criminal_db/*
-data/captured_faces/*
-data/training_data/*
-data/uploads/*
-data/uploaded_videos/*
-
-# Keep the directory structures intact via .gitkeep
+# Keep the folder structure by allowing .gitkeep files
 !data/criminal_db/.gitkeep
 !data/captured_faces/.gitkeep
 !data/training_data/.gitkeep
 !data/uploads/.gitkeep
 !data/uploaded_videos/.gitkeep
 
-# System/IDE Files
+# ── IDE & SYSTEM ────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 .DS_Store
-logs/*.log
-*.log
+Thumbs.db
+desktop.ini

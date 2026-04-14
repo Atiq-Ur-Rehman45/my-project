@@ -85,11 +85,11 @@ def system_status():
                 if f.lower().endswith((".jpg", ".png")) and "_crop" not in f
             ])
 
-    from config import RECOGNITION_ENGINE
+    # Recognition engine is now fixed to SFACE
     return _ok({
         "enrolled":       len(criminals),
         "model_loaded":   engine.model_loaded,
-        "engine":         RECOGNITION_ENGINE,
+        "engine":         "SFACE",
         "total_images":   total_images,
         "face_logs":      db.get_detection_count(),
         "weapon_logs":    db.get_weapon_detection_count(),

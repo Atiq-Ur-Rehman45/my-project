@@ -31,32 +31,32 @@ from config import ENROLL_FRAME_COUNT, CAMERA_INDEX
 
 # ── Banner ────────────────────────────────────────────────────────────────────
 BANNER = r"""
-╔══════════════════════════════════════════════════════════════╗
-║      AI-BASED FACE & WEAPON RECOGNITION SYSTEM               ║
-║      Module: Face Recognition                                ║
-╚══════════════════════════════════════════════════════════════╝
++--------------------------------------------------------------+
+|      AI-BASED FACE & WEAPON RECOGNITION SYSTEM               |
+|      Module: Face Recognition                                |
++--------------------------------------------------------------+
 """
 
 MENU = """
-╔══════════════════════════════╗
-║         MAIN MENU            ║
-╠══════════════════════════════╣
-║  1. Enroll New Criminal      ║
-║  2. Train / Retrain Model    ║
-║  3. Start Live Recognition   ║
-║  3.5 Test Video File         ║
-║  4. View All Records         ║
-║  5. View Detection Logs      ║
-║  6. Delete Criminal Record   ║
-║  7. System Status            ║
-║  0. Exit                     ║
-╚══════════════════════════════╝
++------------------------------+
+|         MAIN MENU            |
++------------------------------+
+|  1. Enroll New Criminal      |
+|  2. Train / Retrain Model    |
+|  3. Start Live Recognition   |
+|  3.5 Test Video File         |
+|  4. View All Records         |
+|  5. View Detection Logs      |
+|  6. Delete Criminal Record   |
+|  7. System Status            |
+|  0. Exit                     |
++------------------------------+
 """
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def print_separator(char="─", width=60):
+def print_separator(char="-", width=60):
     print(char * width)
 
 def input_required(prompt):
@@ -74,9 +74,9 @@ def confirm(prompt):
 
 def enroll_criminal(db, engine, trainer):
     """Enroll a new person into the criminal database."""
-    print("\n" + "═" * 55)
+    print("\n" + "=" * 55)
     print("  ENROLL NEW CRIMINAL")
-    print("═" * 55)
+    print("=" * 55)
 
     name       = input_required("  Full Name        : ")
     cnic       = input("  CNIC (optional)  : ").strip() or None
@@ -133,10 +133,10 @@ def enroll_criminal(db, engine, trainer):
 
 
 def train_model(db, engine, trainer):
-    """Train or retrain the LBPH model from all enrolled face images."""
-    print("\n" + "═" * 55)
-    print("  TRAIN / RETRAIN MODEL")
-    print("═" * 55)
+    """Generate face embeddings for all enrolled criminals using SFace."""
+    print("\n" + "=" * 55)
+    print("  GENERATE FACE EMBEDDINGS (TRAINING)")
+    print("=" * 55)
 
     criminals = db.list_all_criminals()
     if not criminals:
@@ -156,16 +156,16 @@ def train_model(db, engine, trainer):
 
     if success:
         print(f"\n  ✓ Training completed in {elapsed:.2f}s")
-        print(f"  ✓ Model saved — ready for live recognition.\n")
+        print(f"  ✓ SFace database updated — ready for live recognition.\n")
     else:
         print(f"\n  ✗ Training failed. Check that enrolled persons have face images.\n")
 
 
 def start_live_recognition(engine, db, monitor):
     """Launch the live webcam recognition feed."""
-    print("\n" + "═" * 55)
+    print("\n" + "=" * 55)
     print("  LIVE RECOGNITION MONITOR")
-    print("═" * 55)
+    print("=" * 55)
 
     if not engine.model_loaded:
         print("  ⚠ No trained model detected.")
@@ -192,9 +192,9 @@ def start_live_recognition(engine, db, monitor):
 
 def view_all_records(db):
     """Display all criminal records in a formatted table."""
-    print("\n" + "═" * 70)
+    print("\n" + "=" * 70)
     print("  CRIMINAL DATABASE RECORDS")
-    print("═" * 70)
+    print("=" * 70)
     criminals = db.list_all_criminals()
 
     if not criminals:
@@ -203,7 +203,7 @@ def view_all_records(db):
 
     header = f"  {'ID':<5} {'Name':<22} {'Crime Type':<18} {'Status':<12} {'CNIC':<16}"
     print(header)
-    print("  " + "─" * 68)
+    print("  " + "-" * 68)
 
     for c in criminals:
         # Handle None values properly
@@ -215,15 +215,15 @@ def view_all_records(db):
         
         print(f"  {cid:<5} {name:<22} {crime:<18} {status:<12} {cnic:<16}")
 
-    print("═" * 70)
+    print("=" * 70)
     print(f"  Total: {len(criminals)} record(s)\n")
 
 
 def view_detection_logs(db):
     """Show recent detection events."""
-    print("\n" + "═" * 70)
+    print("\n" + "=" * 70)
     print("  RECENT DETECTION LOGS")
-    print("═" * 70)
+    print("=" * 70)
     logs = db.get_recent_detections(limit=20)
 
     if not logs:
@@ -237,16 +237,16 @@ def view_detection_logs(db):
         cam = log.get("camera_id") or "N/A"
         print(f"  [{ts}]  {name:<20}  Conf: {conf:<7.2f}  Camera: {cam}")
 
-    print("═" * 70)
+    print("=" * 70)
     print(f"  Face events  : {db.get_detection_count()}")
     print(f"  Weapon events: {db.get_weapon_detection_count()}\n")
 
 
 def delete_criminal(db, trainer, engine):
     """Delete a criminal record and always re-train to prevent stale identities."""
-    print("\n" + "═" * 55)
+    print("\n" + "=" * 55)
     print("  DELETE CRIMINAL RECORD")
-    print("═" * 55)
+    print("=" * 55)
 
     view_all_records(db)
 
@@ -284,7 +284,7 @@ def delete_criminal(db, trainer, engine):
 
     print("  ✓ Record, related logs, and training images removed.")
 
-    print("\n  Re-training model to remove stale identities...")
+    print("\n  Updating face embeddings to remove deleted identity...")
     success = trainer.full_retrain()
 
     # Always refresh runtime label map after delete.
@@ -299,9 +299,9 @@ def delete_criminal(db, trainer, engine):
 
 def system_status(db, engine):
     """Print system health and statistics."""
-    print("\n" + "═" * 55)
+    print("\n" + "=" * 55)
     print("  SYSTEM STATUS")
-    print("═" * 55)
+    print("=" * 55)
 
     criminals = db.list_all_criminals()
     total_images = 0
@@ -318,19 +318,19 @@ def system_status(db, engine):
     print(f"  Weapon Logs    : {db.get_weapon_detection_count()} events")
     print(f"  Log File       : {LOG_FILE}")
 
-    from config import CRIMINAL_DB_DIR, CAPTURED_DIR, LBPH_MODEL_PATH
+    from config import CRIMINAL_DB_DIR, CAPTURED_DIR, SFACE_DB_PATH
     print(f"\n  Paths:")
     print(f"    Criminal DB   → {CRIMINAL_DB_DIR}")
     print(f"    Captures      → {CAPTURED_DIR}")
-    print(f"    Model         → {LBPH_MODEL_PATH}")
-    print("═" * 55 + "\n")
+    print(f"    Embeddings    → {SFACE_DB_PATH}")
+    print("=" * 55 + "\n")
 
 
 def test_video_recognition(engine, db, monitor):
     """Test face and weapon recognition on a video file (MP4, AVI, etc)."""
-    print("\n" + "═" * 55)
+    print("\n" + "=" * 55)
     print("  VIDEO FILE RECOGNITION TEST")
-    print("═" * 55)
+    print("=" * 55)
     print("  Test weapon detection without real weapons!")
     print("  Use downloaded YouTube MP4s or any local video file.\n")
 

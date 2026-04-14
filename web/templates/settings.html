@@ -36,10 +36,8 @@
           <div class="setting-row">
             <div class="setting-info"><div class="setting-name">Active Engine</div><div class="setting-desc">Face recognition algorithm in use</div></div>
             <div class="setting-val">
-              <select class="form-select config-input" data-key="RECOGNITION_ENGINE" data-type="string">
-                <option value="SFACE" {% if cfg.RECOGNITION_ENGINE == 'SFACE' %}selected{% endif %}>SFACE</option>
-                <option value="LBPH" {% if cfg.RECOGNITION_ENGINE == 'LBPH' %}selected{% endif %}>LBPH</option>
-              </select>
+              <input type="text" class="form-input" value="SFACE" disabled>
+              <input type="hidden" class="config-input" data-key="RECOGNITION_ENGINE" data-type="string" value="SFACE">
             </div>
           </div>
           <div class="setting-row">

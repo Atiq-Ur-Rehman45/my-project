@@ -11,13 +11,14 @@ from config import (
     COLOR_GREEN, COLOR_RED, COLOR_YELLOW, COLOR_WHITE,
     COLOR_BLACK, COLOR_ORANGE, COLOR_BLUE,
     ALERT_COOLDOWN_SECONDS, SNAPSHOT_ON_DETECTION,
-    CAPTURED_DIR, RECOGNITION_CONFIDENCE_THRESHOLD,
-    SFACE_MATCH_THRESHOLD, RECOGNITION_ENGINE, UNKNOWN_LABEL,
+    CAPTURED_DIR,
+    SFACE_MATCH_THRESHOLD, UNKNOWN_LABEL,
     CAMERA_FPS_TARGET, CAMERA_AUTOFOCUS, CAMERA_BUFFER_SIZE,
     WARMUP_FRAMES, ASYNC_CAMERA_CAPTURE, ASYNC_ALERT_PROCESSING,
     ALERT_WORKER_QUEUE_SIZE,
     ENABLE_WEAPON_DETECTION, WEAPON_ALERT_COOLDOWN_SECONDS,
-    WEAPON_ALERT_ON_UNKNOWN, WEAPON_SNAPSHOT_ON_DETECTION
+    WEAPON_ALERT_ON_UNKNOWN, WEAPON_SNAPSHOT_ON_DETECTION,
+    ENABLE_USM_DEBUG
 )
 
 logger = logging.getLogger(__name__)
@@ -237,7 +238,7 @@ class LiveMonitor:
         self.weapon_detector = None
         self.weapon_alert_log = {}   # {weapon_type: last_alert_timestamp}
         self.latest_weapon_result = {"detections": [], "timestamp": 0.0, "frame_id": -1}
-        self.engine_text = f"ENGINE: {RECOGNITION_ENGINE}"
+        self.engine_text = f"ENGINE: SFACE"
         self.ctrl_text = "[Q/ESC] Quit  [S] Snapshot  [P] Pause"
         self.engine_text_width = cv2.getTextSize(
             self.engine_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1
@@ -430,14 +431,8 @@ class LiveMonitor:
             cv2.line(frame, (cx, cy), (cx + dx * corner_len, cy), box_color, corner_t)
             cv2.line(frame, (cx, cy), (cx, cy + dy * corner_len), box_color, corner_t)
 
-        # ── HYBRID MATH FOR CONFIDENCE METERS ──
-        if is_known:
-            if RECOGNITION_ENGINE == "SFACE":
-                match_pct = min(1.0, max(0.0, confidence))
-            else:
-                match_pct = max(0, 1.0 - confidence / RECOGNITION_CONFIDENCE_THRESHOLD)
-        else:
-            match_pct = 0.0
+        # ── SFACE CONFIDENCE NORMALIZATION (Fix 4) ──
+        match_pct = self.engine.remap_confidence(confidence)
 
         label_text = f"{name}"
         if is_known:
@@ -447,6 +442,9 @@ class LiveMonitor:
                 crime = criminal.get("crime_type", "")
                 if crime:
                     label_text += f"  Crime: {crime}"
+        
+        if ENABLE_USM_DEBUG and r.get("was_sharpened"):
+            label_text = "[SHARP] " + label_text
 
         (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
         label_y = y - 10 if y > 40 else y + h + 20
@@ -572,16 +570,14 @@ class LiveMonitor:
 
     def _print_alert(self, criminal, confidence):
         print("\n" + "!" * 60)
-        print(f"  ⚠  CRIMINAL DETECTED! ({RECOGNITION_ENGINE} ENGINE)")
+        print(f"  ⚠  CRIMINAL DETECTED! (SFACE ENGINE)")
         print(f"  Name      : {criminal['name']}")
         print(f"  Crime     : {criminal.get('crime_type', 'N/A')}")
         print(f"  Status    : {criminal.get('status', 'N/A')}")
 
-        if RECOGNITION_ENGINE == "SFACE":
-            print(f"  Confidence: {confidence:.2f} (Cosine Similarity: Higher = Better)")
-        else:
-            print(f"  Confidence: {confidence:.2f} (Euclidean Distance: Lower = Better)")
-
+        remapped_pct = self.engine.remap_confidence(confidence) * 100
+        print(f"  Confidence: {remapped_pct:.1f}% Match (Raw SFace: {confidence:.2f})")
+        
         print(f"  Time      : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("!" * 60 + "\n")
 

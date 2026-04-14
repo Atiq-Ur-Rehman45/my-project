@@ -1,14 +1,13 @@
 """
 ==============================================================
-  AI Face Recognition System — Training Manager
-  HYBRID READY: Dynamically loads BGR for SFace, Grayscale for LBPH
+  AI Face Recognition System — Training Manager (SFace)
 ==============================================================
 """
 
 import cv2
 import os
 import logging
-from config import RECOGNITION_ENGINE, SFACE_DB_PATH, LBPH_MODEL_PATH
+from config import SFACE_DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ class TrainingManager:
     def load_training_data_from_disk(self):
         """
         Walk through criminal_db directory and load all saved face images.
-        Formats the images dynamically based on the active RECOGNITION_ENGINE.
+        Formats the images into BGR for SFace embedding calculation.
         """
         criminals = self.db.list_all_criminals()
         training_data = []
@@ -41,29 +40,34 @@ class TrainingManager:
             for fname in sorted(os.listdir(img_dir)):
                 if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
                     continue
+
+                # Fix 3: Skip face-crop thumbnails — they lack surrounding context
+                # that YuNet needs for accurate landmark alignment during training.
+                if "_crop" in fname:
+                    continue
                 
                 img_path = os.path.join(img_dir, fname)
                 
-                # ── HYBRID IMAGE LOADING LOGIC ─────────────────────────────
-                if RECOGNITION_ENGINE == "SFACE":
-                    # Deep Learning needs full 3-channel BGR color and high resolution
-                    img = cv2.imread(img_path)
-                    if img is None:
-                        continue
-                    # Do not resize. SFace needs original quality for landmarking.
-                else:
-                    # Legacy LBPH needs 1-channel grayscale crushed to 100x100
-                    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                    if img is None:
-                        continue
-                    img = cv2.resize(img, (100, 100))
-                # ───────────────────────────────────────────────────────────
-                
+                # ── IMAGE LOADING LOGIC ──────────────────────────────
+                # Deep Learning needs full 3-channel BGR colour and high resolution
+                img = cv2.imread(img_path)
+                if img is None:
+                    continue
+
                 training_data.append((img, label))
                 count += 1
 
+                # Fix 7: Augment with brightness/contrast variants for robustness
+                # This effectively triples the training data without new captures.
+                bright = cv2.convertScaleAbs(img, alpha=1.10, beta=15)   # +10% brightness
+                dark   = cv2.convertScaleAbs(img, alpha=0.90, beta=-15)  # -10% brightness
+                training_data.append((bright, label))
+                training_data.append((dark, label))
+                count += 2
+                # ───────────────────────────────────────────────────
+
             total_images += count
-            print(f"  [TRAINER] {name} (label {label}): {count} images loaded.")
+            print(f"  [TRAINER] {name} (label {label}): {count} images/variants loaded.")
 
         print(f"[TRAINER] Total: {total_images} images, {len(criminals)} persons.")
         return training_data
@@ -73,7 +77,7 @@ class TrainingManager:
         Load all enrolled face images and completely retrain the model.
         Use after enrolling new criminals or deleting records.
         """
-        print(f"\n[TRAINER] Starting full retrain for {RECOGNITION_ENGINE} mode...")
+        print(f"\n[TRAINER] Starting full retrain for SFACE mode...")
         data = self.load_training_data_from_disk()
 
         if not data:
@@ -83,14 +87,10 @@ class TrainingManager:
             self.engine.model_loaded = False
             self.engine.update_label_map({})
 
-            if RECOGNITION_ENGINE == "SFACE":
-                self.engine.embeddings_db = {}
-                self.engine._refresh_sface_index()
-                if os.path.exists(SFACE_DB_PATH):
-                    os.remove(SFACE_DB_PATH)
-            else:
-                if os.path.exists(LBPH_MODEL_PATH):
-                    os.remove(LBPH_MODEL_PATH)
+            self.engine.embeddings_db = {}
+            self.engine._refresh_sface_index()
+            if os.path.exists(SFACE_DB_PATH):
+                os.remove(SFACE_DB_PATH)
 
             print("[TRAINER] ✓ Model state cleared (no enrolled persons remain).")
             return False

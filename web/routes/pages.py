@@ -3,7 +3,7 @@ web/routes/pages.py
 Page rendering routes — return HTML templates.
 """
 from flask import Blueprint, render_template, current_app
-from config import RECOGNITION_ENGINE
+# Recognition engine is fixed to SFACE
 
 pages_bp = Blueprint("pages", __name__)
 
@@ -18,7 +18,7 @@ def dashboard():
         model_loaded=engine.model_loaded,
         face_logs=db.get_detection_count(),
         weapon_logs=db.get_weapon_detection_count(),
-        engine=RECOGNITION_ENGINE,
+        engine="SFACE",
         active_page="dashboard",
     )
 
@@ -64,7 +64,7 @@ def training():
         active_page="training",
         criminals=summary,
         model_loaded=engine.model_loaded,
-        engine=RECOGNITION_ENGINE,
+        engine="SFACE",
     )
 
 

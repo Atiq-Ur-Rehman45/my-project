@@ -28,7 +28,7 @@ class DatabaseManager:
                     crime_type  TEXT,
                     status      TEXT DEFAULT 'Wanted',
                     notes       TEXT,
-                    face_label  INTEGER UNIQUE,  -- numeric label used by LBPH
+                    face_label  INTEGER UNIQUE,  -- unique id used for storage and model indexing
                     image_dir   TEXT,            -- directory storing face images
                     created_at  TEXT DEFAULT (datetime('now')),
                     updated_at  TEXT DEFAULT (datetime('now'))

@@ -1,6 +1,6 @@
 # ── Core ML & Vision ──────────────────────────────────────────────────────────
 opencv-python>=4.8.0           # Deep Learning (YuNet CNN + SFace 128D Embeddings)
-opencv-contrib-python>=4.8.0  # Legacy Fallback (cv2.face.LBPHFaceRecognizer)
+opencv-contrib-python>=4.8.0  # Optional (Used for some extended GUI features)
 numpy>=1.24.0                  # High-performance matrix & vector math
 
 # ── AI / Recognition ──────────────────────────────────────────────────────────
