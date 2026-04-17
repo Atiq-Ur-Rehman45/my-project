@@ -15,6 +15,13 @@ logs/*.log
 models/*.onnx
 models/*.pkl
 models/*.xml
+models/*_model/
+models/*.bin
+*.pt
+*.onnx
+security_best*
+working_best*
+fallback_best*
 
 # ── RUNTIME DATA (SENSITIVE) ───────────────────────────────────────────────
 # We ignore ALL person photos and surveillance snapshots for privacy
@@ -23,6 +30,7 @@ data/captured_faces/**/*
 data/training_data/**/*
 data/uploads/**/*
 data/uploaded_videos/**/*
+data/weapon_snapshots/**/*
 data/*.db
 data/*.db-journal
 data/*.pkl
@@ -33,8 +41,11 @@ data/*.pkl
 !data/training_data/.gitkeep
 !data/uploads/.gitkeep
 !data/uploaded_videos/.gitkeep
+!data/weapon_snapshots/.gitkeep
+!logs/weapon_events.*
 
 # ── IDE & SYSTEM ────────────────────────────────────────────────────────────
+videos/
 .vscode/
 .idea/
 .DS_Store

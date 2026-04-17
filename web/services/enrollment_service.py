@@ -147,158 +147,159 @@ class EnrollmentService:
         front_pose_baseline = None
         reject_reasons      = defaultdict(int)
 
-        while current_angle_idx < len(strategy) and not self._cancel_requested:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.flip(frame, 1)
-            disp  = frame.copy()
-            now   = time.time()
+        try:
+            while current_angle_idx < len(strategy) and not self._cancel_requested:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                frame = cv2.flip(frame, 1)
+                disp  = frame.copy()
+                now   = time.time()
 
-            stage          = strategy[current_angle_idx]
-            current_angle  = stage["angle"]
-            target_count   = stage["count"]
-            instruction    = stage["instruction"]
-            stage_elapsed  = now - stage_start_time
-            pose_relaxed   = stage_elapsed >= ENROLL_POSE_RELAX_AFTER_SECONDS
-            liveness_ok    = (not ENROLL_LIVENESS_CHALLENGE_ENABLED)
+                stage          = strategy[current_angle_idx]
+                current_angle  = stage["angle"]
+                target_count   = stage["count"]
+                instruction    = stage["instruction"]
+                stage_elapsed  = now - stage_start_time
+                pose_relaxed   = stage_elapsed >= ENROLL_POSE_RELAX_AFTER_SECONDS
+                liveness_ok    = (not ENROLL_LIVENESS_CHALLENGE_ENABLED)
 
-            # Non-blocking inter-stage pause
-            if now < pause_until:
-                self._draw_pause_overlay(disp, instruction, pause_until - now)
-                self._store_frame(disp)
-                continue
+                # Non-blocking inter-stage pause
+                if now < pause_until:
+                    self._draw_pause_overlay(disp, instruction, pause_until - now)
+                    self._store_frame(disp)
+                    continue
 
-            # Detect & qualify face
-            face_detected = quality_ok = pose_ok = False
-            quality_message = ""
-            x = y = w = h = 0
-            yaw_val = pitch_val = None
+                # Detect & qualify face
+                face_detected = quality_ok = pose_ok = False
+                quality_message = ""
+                x = y = w = h = 0
+                yaw_val = pitch_val = None
 
-            self.engine._set_sface_input_size((FRAME_WIDTH, FRAME_HEIGHT))
-            _, faces = self.engine.detector.detect(frame)
-            face_detected = faces is not None and len(faces) > 0
-            if face_detected:
-                best = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
-                x, y, w, h = best[0:4].astype(int)
-                face_area   = (w * h) / float(FRAME_WIDTH * FRAME_HEIGHT)
-                roi         = frame[max(0,y):y+h, max(0,x):x+w]
-                if len(faces) > 1:
-                    quality_message = "ONE FACE ONLY"
-                elif face_area < ENROLL_FACE_MIN_AREA_RATIO:
-                    quality_message = "MOVE CLOSER"
-                elif roi.size == 0:
-                    quality_message = "FACE OUT OF FRAME"
-                else:
-                    if ENABLE_BLUR_DETECTION:
-                        gray_roi   = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                        blur_score = self.engine.estimate_blur(gray_roi)
-                        if blur_score < BLUR_THRESHOLD:
-                            quality_message = "HOLD STILL (BLURRY)"
+                self.engine._set_sface_input_size((FRAME_WIDTH, FRAME_HEIGHT))
+                _, faces = self.engine.detector.detect(frame)
+                face_detected = faces is not None and len(faces) > 0
+                if face_detected:
+                    best = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+                    x, y, w, h = best[0:4].astype(int)
+                    face_area   = (w * h) / float(FRAME_WIDTH * FRAME_HEIGHT)
+                    roi         = frame[max(0,y):y+h, max(0,x):x+w]
+                    if len(faces) > 1:
+                        quality_message = "ONE FACE ONLY"
+                    elif face_area < ENROLL_FACE_MIN_AREA_RATIO:
+                        quality_message = "MOVE CLOSER"
+                    elif roi.size == 0:
+                        quality_message = "FACE OUT OF FRAME"
+                    else:
+                        if ENABLE_BLUR_DETECTION:
+                            gray_roi   = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                            blur_score = self.engine.estimate_blur(gray_roi)
+                            if blur_score < BLUR_THRESHOLD:
+                                quality_message = "HOLD STILL (BLURRY)"
+                            else:
+                                quality_ok = True
                         else:
                             quality_ok = True
-                    else:
-                        quality_ok = True
 
-                if quality_ok:
-                    yaw_val, pitch_val = self.engine._sface_pose_signature(best)
-                    pose_ok = self.engine._pose_matches_stage(
-                        current_angle, yaw_val, pitch_val, relaxed=pose_relaxed
-                    )
-                    if not pose_ok:
-                        quality_message = f"ADJUST: {current_angle}"
+                    if quality_ok:
+                        yaw_val, pitch_val = self.engine._sface_pose_signature(best)
+                        pose_ok = self.engine._pose_matches_stage(
+                            current_angle, yaw_val, pitch_val, relaxed=pose_relaxed
+                        )
+                        if not pose_ok:
+                            quality_message = f"ADJUST: {current_angle}"
 
-                    if quality_ok and pose_ok and ENROLL_LIVENESS_CHALLENGE_ENABLED:
-                        if current_angle.upper() == "FRONT":
+                        if quality_ok and pose_ok and ENROLL_LIVENESS_CHALLENGE_ENABLED:
+                            if current_angle.upper() == "FRONT":
+                                liveness_ok = True
+                            else:
+                                liveness_ok = self.engine._liveness_pose_delta_ok(
+                                    current_angle, yaw_val, pitch_val, front_pose_baseline
+                                )
+                                if not liveness_ok:
+                                    quality_message = "LIVENESS: MOVE HEAD AS PROMPTED"
+                        elif quality_ok and pose_ok:
                             liveness_ok = True
-                        else:
-                            liveness_ok = self.engine._liveness_pose_delta_ok(
-                                current_angle, yaw_val, pitch_val, front_pose_baseline
-                            )
-                            if not liveness_ok:
-                                quality_message = "LIVENESS: MOVE HEAD AS PROMPTED"
-                    elif quality_ok and pose_ok:
-                        liveness_ok = True
-            else:
-                quality_message = "NO FACE DETECTED"
+                else:
+                    quality_message = "NO FACE DETECTED"
 
-            if quality_ok and pose_ok and liveness_ok:
-                stage_stable_frames += 1
-            else:
-                stage_stable_frames = 0
-
-            can_capture = (
-                quality_ok and pose_ok and liveness_ok
-                and stage_stable_frames >= ENROLL_MIN_STABLE_FRAMES
-                and (now - last_capture) >= ENROLL_CAPTURE_DELAY
-            )
-
-            if can_capture:
-                self.collected_frames.append(frame.copy())
-                angle_count     += 1
-                total_collected += 1
-                last_capture     = now
-
-                if current_angle.upper() == "FRONT" and yaw_val:
-                    if front_pose_baseline is None:
-                        front_pose_baseline = {"yaw": yaw_val, "pitch": pitch_val}
-                    else:
-                        front_pose_baseline["yaw"]   = (front_pose_baseline["yaw"]   + yaw_val)   * 0.5
-                        front_pose_baseline["pitch"] = (front_pose_baseline["pitch"] + pitch_val) * 0.5
-
-                # Save image to disk (Fix 5: Lossless PNG)
-                if self.save_dir:
-                    img_path = f"{self.save_dir}/{current_angle}_{angle_count:02d}.png"
-                    cv2.imwrite(img_path, frame)
-                    if ENROLL_SAVE_FACE_CROPS and w > 0:
-                        crop = frame[max(0,y):y+h, max(0,x):x+w]
-                        if crop.size > 0:
-                            cv2.imwrite(f"{self.save_dir}/{current_angle}_{angle_count:02d}_crop.png", crop)
-
-                # Emit progress via WebSocket
-                self.socketio.emit("enrollment:progress", {
-                    "stage":          current_angle,
-                    "captured":       angle_count,
-                    "target":         target_count,
-                    "total_captured": total_collected,
-                    "total_target":   total_target,
-                    "quality_message": "",
-                    "all_stages": [
-                        {
-                            "angle":    s["angle"],
-                            "target":   s["count"],
-                            "captured": (angle_count if i == current_angle_idx
-                                         else (s["count"] if i < current_angle_idx else 0)),
-                        }
-                        for i, s in enumerate(strategy)
-                    ],
-                })
-
-                if angle_count >= target_count:
-                    current_angle_idx += 1
-                    angle_count        = 0
+                if quality_ok and pose_ok and liveness_ok:
+                    stage_stable_frames += 1
+                else:
                     stage_stable_frames = 0
-                    if current_angle_idx < len(strategy):
-                        pause_until      = now + ENROLL_STAGE_PAUSE_SECONDS
-                        stage_start_time = now
-                        self.socketio.emit("enrollment:stage_change", {
-                            "new_stage":   strategy[current_angle_idx]["angle"],
-                            "instruction": strategy[current_angle_idx]["instruction"],
-                        })
-            else:
-                if now - last_capture >= ENROLL_CAPTURE_DELAY:
-                    reject_reasons["no_capture"] += 1
 
-            # Draw overlay on camera frame
-            self._draw_enrollment_hud(
-                disp, current_angle, instruction,
-                angle_count, target_count, total_collected, total_target,
-                face_detected, quality_ok, pose_ok, x, y, w, h, quality_message,
-                pose_relaxed, yaw_val, pitch_val, stage_elapsed
-            )
-            self._store_frame(disp)
+                can_capture = (
+                    quality_ok and pose_ok and liveness_ok
+                    and stage_stable_frames >= ENROLL_MIN_STABLE_FRAMES
+                    and (now - last_capture) >= ENROLL_CAPTURE_DELAY
+                )
 
-        cap.release()
+                if can_capture:
+                    self.collected_frames.append(frame.copy())
+                    angle_count     += 1
+                    total_collected += 1
+                    last_capture     = now
+
+                    if current_angle.upper() == "FRONT" and yaw_val:
+                        if front_pose_baseline is None:
+                            front_pose_baseline = {"yaw": yaw_val, "pitch": pitch_val}
+                        else:
+                            front_pose_baseline["yaw"]   = (front_pose_baseline["yaw"]   + yaw_val)   * 0.5
+                            front_pose_baseline["pitch"] = (front_pose_baseline["pitch"] + pitch_val) * 0.5
+
+                    # Save image to disk (Fix 5: Lossless PNG)
+                    if self.save_dir:
+                        img_path = f"{self.save_dir}/{current_angle}_{angle_count:02d}.png"
+                        cv2.imwrite(img_path, frame)
+                        if ENROLL_SAVE_FACE_CROPS and w > 0:
+                            crop = frame[max(0,y):y+h, max(0,x):x+w]
+                            if crop.size > 0:
+                                cv2.imwrite(f"{self.save_dir}/{current_angle}_{angle_count:02d}_crop.png", crop)
+
+                    # Emit progress via WebSocket
+                    self.socketio.emit("enrollment:progress", {
+                        "stage":          current_angle,
+                        "captured":       angle_count,
+                        "target":         target_count,
+                        "total_captured": total_collected,
+                        "total_target":   total_target,
+                        "quality_message": "",
+                        "all_stages": [
+                            {
+                                "angle":    s["angle"],
+                                "target":   s["count"],
+                                "captured": (angle_count if i == current_angle_idx
+                                             else (s["count"] if i < current_angle_idx else 0)),
+                            }
+                            for i, s in enumerate(strategy)
+                        ],
+                    })
+
+                    if angle_count >= target_count:
+                        current_angle_idx += 1
+                        angle_count        = 0
+                        stage_stable_frames = 0
+                        if current_angle_idx < len(strategy):
+                            pause_until      = now + ENROLL_STAGE_PAUSE_SECONDS
+                            stage_start_time = now
+                            self.socketio.emit("enrollment:stage_change", {
+                                "new_stage":   strategy[current_angle_idx]["angle"],
+                                "instruction": strategy[current_angle_idx]["instruction"],
+                            })
+                else:
+                    if now - last_capture >= ENROLL_CAPTURE_DELAY:
+                        reject_reasons["no_capture"] += 1
+
+                # Draw overlay on camera frame
+                self._draw_enrollment_hud(
+                    disp, current_angle, instruction,
+                    angle_count, target_count, total_collected, total_target,
+                    face_detected, quality_ok, pose_ok, x, y, w, h, quality_message,
+                    pose_relaxed, yaw_val, pitch_val, stage_elapsed
+                )
+                self._store_frame(disp)
+        finally:
+            cap.release()
 
         with self._lock:
             self._frame_jpeg = None
@@ -314,6 +315,7 @@ class EnrollmentService:
             })
 
         self._running = False
+
 
     def _store_frame(self, frame):
         _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, MJPEG_QUALITY])

@@ -16,7 +16,7 @@ from flask import Blueprint, request, jsonify, current_app, send_file
 
 from config import (
     UPLOAD_DIR, ALLOWED_VIDEO_EXT, UPLOAD_MAX_MB,
-    CRIMINAL_DB_DIR, CAPTURED_DIR,
+    CRIMINAL_DB_DIR, CAPTURED_DIR, DATA_DIR,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ def _criminal_image_urls(criminal):
     urls = []
     for fname in sorted(os.listdir(img_dir)):
         if fname.lower().endswith((".jpg", ".jpeg", ".png")) and "_crop" not in fname:
-            rel = os.path.relpath(os.path.join(img_dir, fname), "data").replace("\\", "/")
+            rel = os.path.relpath(os.path.join(img_dir, fname), DATA_DIR).replace("\\", "/")
             urls.append(f"/images/{rel}")
     return urls
 
@@ -379,7 +379,7 @@ def snapshot():
     path = _pipeline().take_snapshot()
     if not path:
         return _err("No active feed or frame not available")
-    rel = os.path.relpath(path, "data").replace("\\", "/")
+    rel = os.path.relpath(path, DATA_DIR).replace("\\", "/")
     return _ok({"path": path, "url": f"/images/{rel}"})
 
 
@@ -390,6 +390,51 @@ def feed_status():
         "status": pipe.status,
         "stats":  pipe.stats,
     })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Focus Mode & Weapon Module API
+# ══════════════════════════════════════════════════════════════════════════════
+
+@api_bp.route("/mode")
+def get_mode():
+    pipe = _pipeline()
+    if hasattr(pipe, "mode_manager"):
+        return _ok(pipe.mode_manager.get_status())
+    return _err("Mode manager not initialized")
+
+
+@api_bp.route("/mode", methods=["POST"])
+def set_mode():
+    body = request.get_json(silent=True) or {}
+    mode = body.get("mode")
+    if not mode:
+        return _err("Missing 'mode' parameter")
+
+    pipe = _pipeline()
+    if not hasattr(pipe, "mode_manager"):
+        return _err("Mode manager not initialized")
+
+    result = pipe.mode_manager.switch_mode(mode)
+    if result["success"]:
+        return _ok(result)
+    return _err(result.get("message", "Switch failed"), 400)
+
+
+@api_bp.route("/antispoof/toggle", methods=["POST"])
+def toggle_antispoof():
+    body = request.get_json(silent=True) or {}
+    enabled = body.get("enabled")
+    
+    pipe = _pipeline()
+    if getattr(pipe, "_weapon_antispoof", None):
+        new_state = pipe._weapon_antispoof.toggle(enabled)
+        return _ok({
+            "message": "Anti-spoofing toggled",
+            "enabled": new_state,
+            "status_label": pipe._weapon_antispoof.status_label
+        })
+    return _err("Anti-spoofing engine not loaded or initialized")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -435,7 +480,7 @@ def face_logs():
     for entry in logs:
         sp = entry.get("snapshot_path")
         if sp and os.path.isfile(sp):
-            rel = os.path.relpath(sp, "data").replace("\\", "/")
+            rel = os.path.relpath(sp, DATA_DIR).replace("\\", "/")
             entry["snapshot_url"] = f"/images/{rel}"
         else:
             entry["snapshot_url"] = None

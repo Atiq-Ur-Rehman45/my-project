@@ -27,6 +27,7 @@ class FaceEngine:
         self._sface_frame_index = 0
         self._sface_track_cache = []
         self._sface_track_seq = 0
+        self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         
         print(f"\n[ENGINE] =======================================")
         print(f"[ENGINE] Booting: SFACE Recognition Engine")
@@ -970,8 +971,7 @@ class FaceEngine:
         try:
             lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
             l_ch, a_ch, b_ch = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            l_ch = clahe.apply(l_ch)
+            l_ch = self._clahe.apply(l_ch)
             return cv2.cvtColor(cv2.merge([l_ch, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
         except Exception:
             return frame  # Safe fallback — never crash the recognition loop

@@ -17,7 +17,7 @@ from datetime import datetime
 
 # ── Logging setup (before any other imports) ──────────────────────────────────
 from config import LOG_FILE, LOGS_DIR, WEB_HOST, WEB_PORT, WEB_DEBUG, WEB_SECRET_KEY
-from config import CRIMINAL_DB_DIR, CAPTURED_DIR, DATA_DIR, UPLOAD_DIR
+from config import CRIMINAL_DB_DIR, CAPTURED_DIR, DATA_DIR, UPLOAD_DIR, UPLOAD_MAX_MB
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -60,7 +60,7 @@ def create_app():
         static_folder=os.path.join("web", "static"),
     )
     app.config["SECRET_KEY"]        = WEB_SECRET_KEY
-    app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024   # 500 MB upload limit
+    app.config["MAX_CONTENT_LENGTH"] = UPLOAD_MAX_MB * 1024 * 1024
 
     # ── SocketIO ──────────────────────────────────────────────────────────────
     socketio = SocketIO(
@@ -140,7 +140,7 @@ def create_app():
             path = pipeline.take_snapshot()
             if path:
                 import os as _os
-                rel = _os.path.relpath(path, "data").replace("\\", "/")
+                rel = _os.path.relpath(path, DATA_DIR).replace("\\", "/")
                 socketio.emit("snapshot:saved", {"url": f"/images/{rel}"})
         elif action == "toggle_native":
             is_active = pipeline.toggle_native_window()

@@ -1,0 +1,44 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# WEAPON DETECTION MODULE — Configuration (STABLE SPECIALIZED MODEL)
+# ══════════════════════════════════════════════════════════════════════════════
+# Reverted to STABLE ONNX version for maximum compatibility with your video.
+
+# ── Model Settings ────────────────────────────────────────────────────────────
+model:
+  path: "models/weapon_yolov8n.onnx"      # Back to the stable ONNX file
+  input_size: [640, 640]
+  confidence_threshold: 0.35            # Sensitivity tuned for toy/video guns
+  nms_threshold: 0.45
+  min_box_area: 300
+  warmup_frames: 5
+
+# ==============================================================================
+# Model Class Definition (Specialized Mapping)
+# ==============================================================================
+classes:
+  0: "Pistol"
+  1: "Knife"
+
+# Threat Levels
+threat_levels:
+  "Pistol": "CRITICAL"
+  "Knife": "HIGH"
+
+# ── Performance Profiles ──────────────────────────────────────────────────────
+performance_profile: "balanced"
+
+profiles:
+  balanced:
+    input_size: [640, 640]
+    frame_skip: 1
+    confidence_threshold: 0.35
+
+# ── Alerts & Logging ──────────────────────────────────────────────────────────
+alerts:
+  cooldown_seconds: 15
+  snapshot_on_detection: true
+  snapshot_dir: "data/weapon_snapshots"
+
+logging:
+  csv_path: "logs/weapon_events.csv"
+  json_path: "logs/weapon_events.json"

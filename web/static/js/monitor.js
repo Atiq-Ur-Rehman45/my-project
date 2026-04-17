@@ -121,7 +121,40 @@ socket.on("status:native_window", (data) => {
   }
 });
 
-// ── Source switch ─────────────────────────────────────────────────────────────
+// -- Focus Mode & Anti-Spoofing ------------------------------------------------
+async function setFocusMode(mode) {
+  const res = await apiPost("/api/mode", { mode });
+  if (res.success) {
+    showToast(`Mode switched to: ${res.data.label}`, "success");
+    // Update the antispoof toggle enabled state based on if weapon mode is active
+    document.getElementById("antispoof-toggle").disabled = !res.data.weapon_enabled;
+  } else {
+    showToast(res.error || "Failed to switch mode", "error");
+  }
+}
+
+async function toggleAntiSpoof(enabled) {
+  const res = await apiPost("/api/antispoof/toggle", { enabled });
+  if (res.success) {
+    showToast(res.data.message, "success");
+  } else {
+    showToast(res.error || "Failed to toggle anti-spoofing", "error");
+    document.getElementById("antispoof-toggle").checked = !enabled; // Revert UI
+  }
+}
+
+socket.on("mode:switching", (data) => {
+  showToast("Switching detection mode...", "info");
+  document.getElementById("focus-mode-select").disabled = true;
+});
+
+socket.on("mode:changed", (data) => {
+  document.getElementById("focus-mode-select").value = data.mode;
+  document.getElementById("focus-mode-select").disabled = false;
+  document.getElementById("antispoof-toggle").disabled = !data.weapon_enabled;
+});
+
+// -- Source switch -------------------------------------------------------------
 function selectSource(src) {
   currentSource = src;
   document.getElementById("src-camera").classList.toggle("active", src === "camera");

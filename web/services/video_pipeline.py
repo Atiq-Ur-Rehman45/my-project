@@ -23,18 +23,33 @@ from config import (
     COLOR_GREEN, COLOR_RED, COLOR_YELLOW, COLOR_WHITE, COLOR_ORANGE,
     COLOR_BLACK, UNKNOWN_LABEL,
     CAMERA_FPS_TARGET, CAMERA_AUTOFOCUS, CAMERA_BUFFER_SIZE,
-    UPLOAD_DIR, ENABLE_USM_DEBUG
+    UPLOAD_DIR, ENABLE_USM_DEBUG, DATA_DIR,
+    DETECTION_MODE_DEFAULT, WEAPON_ANTISPOOF_ENABLED,
+    WEAPON_SNAPSHOT_DIR,
 )
-from monitor import LatestFrameCamera, DirectCamera, VideoFileCamera
+from camera import LatestFrameCamera, DirectCamera, VideoFileCamera
+from mode_manager import FocusModeManager
 
 logger = logging.getLogger(__name__)
 
+# Import weapon modules with graceful fallback
 try:
-    from weapon_engine import AsyncWeaponDetector, draw_weapon_detections
+    from weapon_detector import (
+        AsyncWeaponDetector, draw_weapon_detections,
+        WeaponEventLogger, save_weapon_snapshot,
+    )
 except Exception:
     AsyncWeaponDetector = None
-    def draw_weapon_detections(frame, detections):
+    def draw_weapon_detections(frame, detections, antispoof_results=None):
         return frame
+    WeaponEventLogger = None
+    def save_weapon_snapshot(frame, detections, save_dir=""):
+        return None
+
+try:
+    from weapon_antispoofing import WeaponAntiSpoof
+except Exception:
+    WeaponAntiSpoof = None
 
 
 class VideoPipeline:
@@ -66,6 +81,25 @@ class VideoPipeline:
         self._camera_stream  = None
         self._weapon_detector = None
         self._frame_num      = 0
+
+        # Weapon anti-spoofing engine (fully independent)
+        if WeaponAntiSpoof is not None:
+            self._weapon_antispoof = WeaponAntiSpoof(enabled=WEAPON_ANTISPOOF_ENABLED)
+        else:
+            self._weapon_antispoof = None
+
+        # Weapon event logger (CSV + JSON — separate from face logs)
+        if WeaponEventLogger is not None:
+            self._weapon_logger = WeaponEventLogger()
+        else:
+            self._weapon_logger = None
+        self._frame_num      = 0
+
+        # Focus Mode Manager
+        self._mode_manager = FocusModeManager(
+            initial_mode=DETECTION_MODE_DEFAULT,
+            socketio=socketio,
+        )
 
         # Alert cooldown tracking
         self._alert_log        = {}   # criminal_id -> last_alert_ts
@@ -153,6 +187,10 @@ class VideoPipeline:
     def is_running(self) -> bool:
         return self._running
 
+    @property
+    def mode_manager(self) -> FocusModeManager:
+        return self._mode_manager
+
     # ── Internal ─────────────────────────────────────────────────────────────
 
     def _start_thread(self):
@@ -161,12 +199,13 @@ class VideoPipeline:
         self._frame_num = 0
         self._native_window_active = True
 
-        # Weapon detector
-        if ENABLE_WEAPON_DETECTION and AsyncWeaponDetector is not None:
-            self._weapon_detector = AsyncWeaponDetector().start()
-            if not self._weapon_detector.model_loaded:
-                logger.warning("[PIPELINE] Weapon model missing — weapon detection disabled.")
-                self._weapon_detector = None
+        # Weapon detector (only if mode allows it)
+        if self._mode_manager.weapon_enabled and ENABLE_WEAPON_DETECTION:
+            if AsyncWeaponDetector is not None:
+                self._weapon_detector = AsyncWeaponDetector().start()
+                if not self._weapon_detector.model_loaded:
+                    logger.warning("[PIPELINE] Weapon model missing -- weapon detection disabled.")
+                    self._weapon_detector = None
 
         # Refresh label map
         label_map = self.db.get_label_criminal_map()
@@ -211,20 +250,36 @@ class VideoPipeline:
 
             self._frame_num += 1
 
-            # ── Face recognition ──────────────────────────────────────────
-            face_results, _ = self.engine.recognize_all_faces(frame)
+            # -- Face recognition (if mode allows) -------------------------
+            face_results = []
+            if self._mode_manager.face_enabled:
+                face_results, _ = self.engine.recognize_all_faces(frame)
 
-            # ── Weapon detection (async) ──────────────────────────────────
+            # -- Weapon detection (async, if mode allows) ------------------
             weapon_detections = []
-            if self._weapon_detector:
+            antispoof_results = {}  # index -> {score, passed}
+            if self._mode_manager.weapon_enabled and self._weapon_detector:
                 self._weapon_detector.submit_frame(frame, self._frame_num)
                 result = self._weapon_detector.get_latest_result()
                 weapon_detections = result.get("detections", [])
 
-            # ── Draw overlays ─────────────────────────────────────────────
-            self._draw_faces(frame, face_results)
+                # Run anti-spoofing on each weapon detection
+                if weapon_detections and self._weapon_antispoof:
+                    for i, det in enumerate(weapon_detections):
+                        as_result = self._weapon_antispoof.analyze(frame, det["bbox"])
+                        antispoof_results[i] = {
+                            "score": as_result.real_probability,
+                            "passed": as_result.is_real,
+                            "depth": as_result.depth_score,
+                            "texture": as_result.texture_score,
+                            "edge": as_result.edge_score,
+                        }
+
+            # -- Draw overlays ---------------------------------------------
+            if face_results:
+                self._draw_faces(frame, face_results)
             if weapon_detections:
-                draw_weapon_detections(frame, weapon_detections)
+                draw_weapon_detections(frame, weapon_detections, antispoof_results)
             self._draw_hud(frame, face_results, weapon_detections)
 
             # ── Encode for MJPEG stream ───────────────────────────────────
@@ -238,7 +293,7 @@ class VideoPipeline:
             else:
                 if getattr(self, "_native_window_was_active", False):
                     try: cv2.destroyWindow("Surveillance Feed (Native)")
-                    except: pass
+                    except Exception: pass
                     self._native_window_was_active = False
 
             # ── Alerts ───────────────────────────────────────────────────
@@ -246,7 +301,7 @@ class VideoPipeline:
                 if r["is_known"]:
                     self._handle_face_alert(r, frame)
             if weapon_detections:
-                self._handle_weapon_alert(weapon_detections, frame)
+                self._handle_weapon_alert(weapon_detections, frame, antispoof_results)
 
             # ── FPS stats ─────────────────────────────────────────────────
             now = time.time()
@@ -285,10 +340,9 @@ class VideoPipeline:
         if self._weapon_detector:
             self._weapon_detector.stop()
             self._weapon_detector = None
-            
         try:
             cv2.destroyWindow("Surveillance Feed (Native)")
-        except:
+        except Exception:
             pass
         self._native_window_was_active = False
         
@@ -360,19 +414,38 @@ class VideoPipeline:
 
     def _draw_hud(self, frame, face_results, weapon_detections):
         h, w = frame.shape[:2]
+
+        # Mode-colored banner
+        banner_color = self._mode_manager.banner_color
         cv2.rectangle(frame, (0, 0), (w, 42), (12, 15, 20), -1)
-        cv2.putText(frame, "AI FACE + WEAPON RECOGNITION",
+        # Mode indicator bar (thin line at top)
+        cv2.rectangle(frame, (0, 0), (w, 3), banner_color, -1)
+
+        mode_label = self._mode_manager.label
+        cv2.putText(frame, f"AI SURVEILLANCE -- {mode_label}",
                     (10, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.50, COLOR_ORANGE, 1)
         cv2.putText(frame, f"FPS:{self.stats['fps']:.0f}",
                     (10, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR_GREEN, 1)
-        cv2.putText(frame, f"Faces:{len(face_results)}",
-                    (90, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR_WHITE, 1)
-        wc = len(weapon_detections)
-        wcolor = COLOR_RED if wc > 0 else COLOR_WHITE
-        cv2.putText(frame, f"Weapons:{wc}",
-                    (170, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.42, wcolor, 1)
-        cv2.putText(frame, "SFACE",
-                    (270, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR_YELLOW, 1)
+
+        # Face count (only if face mode active)
+        if self._mode_manager.face_enabled:
+            cv2.putText(frame, f"Faces:{len(face_results)}",
+                        (90, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR_WHITE, 1)
+
+        # Weapon count (only if weapon mode active)
+        if self._mode_manager.weapon_enabled:
+            wc = len(weapon_detections)
+            wcolor = COLOR_RED if wc > 0 else COLOR_WHITE
+            cv2.putText(frame, f"Weapons:{wc}",
+                        (170, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.42, wcolor, 1)
+
+        # Anti-spoof status
+        if self._mode_manager.weapon_enabled and self._weapon_antispoof:
+            as_label = self._weapon_antispoof.status_label
+            as_color = COLOR_GREEN if self._weapon_antispoof.enabled else COLOR_YELLOW
+            cv2.putText(frame, as_label,
+                        (280, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.36, as_color, 1)
+
         ts = datetime.now().strftime("%H:%M:%S")
         (tw, _), _ = cv2.getTextSize(ts, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
         cv2.putText(frame, ts, (w - tw - 8, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR_WHITE, 1)
@@ -410,7 +483,7 @@ class VideoPipeline:
         snap_url = None
         if snapshot_path:
             import os
-            rel = os.path.relpath(snapshot_path, "data").replace("\\", "/")
+            rel = os.path.relpath(snapshot_path, DATA_DIR).replace("\\", "/")
             snap_url = f"/images/{rel}"
 
         self.socketio.emit("alert:face_detected", {
@@ -423,7 +496,7 @@ class VideoPipeline:
         })
         logger.warning(f"[PIPELINE] [!] Criminal detected: {result['name']} ({pct}%)")
 
-    def _handle_weapon_alert(self, detections, frame):
+    def _handle_weapon_alert(self, detections, frame, antispoof_results=None):
         now = time.time()
         types = sorted({d.get("type", "weapon") for d in detections})
         should_alert = any(
@@ -432,16 +505,28 @@ class VideoPipeline:
         )
         if not should_alert:
             return
+
+        # If anti-spoofing is active, only alert on detections that passed
+        if antispoof_results and self._weapon_antispoof and self._weapon_antispoof.enabled:
+            passed_detections = [
+                d for i, d in enumerate(detections)
+                if antispoof_results.get(i, {}).get("passed", True)
+            ]
+            if not passed_detections:
+                return  # All detections were flagged as fake
+            detections = passed_detections
+
         for wt in types:
             self._weapon_alert_log[wt] = now
 
         max_conf = max(float(d.get("confidence", 0)) for d in detections)
+
+        # Save snapshot to weapons directory
         snapshot_path = None
         if WEAPON_SNAPSHOT_ON_DETECTION:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            snapshot_path = f"{CAPTURED_DIR}/weapon_{ts}.jpg"
-            cv2.imwrite(snapshot_path, frame)
+            snapshot_path = save_weapon_snapshot(frame, detections, WEAPON_SNAPSHOT_DIR)
 
+        # Log to SQLite (existing DB layer)
         self.db.log_weapon_detection(
             weapon_types=", ".join(types),
             max_confidence=max_conf,
@@ -449,10 +534,26 @@ class VideoPipeline:
             camera_id=self.stats.get("source", "webcam_0"),
         )
 
+        # Log to CSV + JSON (new weapon-specific logger)
+        if self._weapon_logger:
+            for d in detections:
+                as_info = antispoof_results.get(
+                    detections.index(d), {}
+                ) if antispoof_results else {}
+                self._weapon_logger.log(
+                    weapon_type=d.get("type", "weapon"),
+                    confidence=d.get("confidence", 0),
+                    threat_level=d.get("threat_level", "UNKNOWN"),
+                    bbox=d.get("bbox", {}),
+                    snapshot_path=snapshot_path or "",
+                    antispoof_score=as_info.get("score", -1.0),
+                    antispoof_passed=as_info.get("passed", True),
+                )
+
         snap_url = None
         if snapshot_path:
             import os
-            rel = os.path.relpath(snapshot_path, "data").replace("\\", "/")
+            rel = os.path.relpath(snapshot_path, DATA_DIR).replace("\\", "/")
             snap_url = f"/images/{rel}"
 
         threat = max(
@@ -466,6 +567,7 @@ class VideoPipeline:
             "confidence":   round(max_conf * 100, 1),
             "timestamp":    datetime.now().strftime("%H:%M:%S"),
             "snapshot_url": snap_url,
+            "antispoof_active": bool(self._weapon_antispoof and self._weapon_antispoof.enabled),
         })
         logger.warning(f"[PIPELINE] [!] Weapon detected: {types} ({max_conf:.2f})")
 
